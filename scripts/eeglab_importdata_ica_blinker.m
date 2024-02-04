@@ -29,7 +29,7 @@ stimNames{3} = 'chor-101';
 stimNames{4} = 'chor-019';
 
 %% Load One Subject's Data
-for subject = 1:21
+for subject = 2 %:21
     % subject = 1; % works well
 
     data_path = ['./data/musicImagery/dataCND/dataSub', num2str(subject), '.mat'];
@@ -63,27 +63,41 @@ for subject = 1:21
     end
     
     %% Import the data into EEGLAB as an epoched set
-    % 
-    % EEG = pop_importdata('setname', 'musicImagery' ...
-    %         , 'data', data ...
-    %         , 'subject', subject ...
-    %         , 'condition', 'all' ...
-    %         , 'session', 1 ...
-    %         , 'nbchan', 64 ...
-    %         , 'chanlocs', eeg.chanlocs ...
-    %         , 'srate', eeg.fs ...
-    %         );
-    %         %, 'ref', '', );
-    % 
-    % % EEG_TRIALS.epoch = 1:88;
-    % EEG.epoch = trialsval'; % append trial descriptors (is EEG.trialsval not supported?)
-    % EEG.epochdescription = {'condName'; 'stimName'}; % EEG.epoch column descriptors
-    % EEG.filename = ['dataSub', num2str(subject), '.mat']; 
-    % EEG, changes = eeg_checkset(EEG); % check for errors?
+    
+    EEG_EPS = pop_importdata('setname', 'musicImagery' ...
+            , 'data', data ...
+            , 'subject', subject ...
+            , 'condition', 'all' ...
+            , 'session', 1 ...
+            , 'nbchan', 64 ...
+            , 'chanlocs', eeg.chanlocs ...
+            , 'srate', eeg.fs ...
+            );
+            %, 'ref', '', );
+    
+    % EEG_TRIALS.epoch = 1:88;
+    EEG_EPS.epoch = trialsval'; % append trial descriptors (is EEG.trialsval not supported?)
+    EEG_EPS.epochdescription = {'condName'; 'stimName'}; % EEG.epoch column descriptors
+    EEG_EPS.filename = ['dataSub', num2str(subject), '.mat']; 
+    EEG_EPS, changes = eeg_checkset(EEG_EPS); % check for errors?
     % 
     % % Save set?
     % %save('sub1', eeg.data, )
-    
+
+    %% Run ICA
+    EEG_EPS = pop_runica(EEG_EPS, 'icatype', 'runica')
+    %OUTEEG = ALLEEG;
+    % pop_eegplot(ALLEEG, 0)
+
+    %% Now relaunch GUI to run ICLabel
+    %eeglab redraw
+    EEG_EPS = pop_iclabel(EEG_EPS, 'default'); % fails for epoched ICs?
+    [pClass, eyeICidxs] = sortrows(...
+        EEG_EPS.etc.ic_classification.ICLabel.classifications,...
+        3, 'descend');
+    topEyeICidxs = eyeICidxs(1:3); %(pClass(:, 3)>0.9) % >90% eye class
+    pop_prop(EEG_EPS, 0, topEyeICidxs(1))
+
     %% Merge all trials into one dataset
     for origTrialIdx = eeg.origTrialPosition
         
@@ -101,7 +115,7 @@ for subject = 1:21
         EEG_TRIAL = pop_importdata('setname', 'musicImagery' ...
             , 'data', data ...
             , 'subject', subject ...
-            , 'condition', 'merged' ...
+            , 'condition', condition ...
             , 'session', 1 ...
             , 'nbchan', 64 ...
             , 'chanlocs', eeg.chanlocs ...
@@ -118,117 +132,33 @@ for subject = 1:21
     end
     
     %% Run ICA
-    ALLEEG = pop_runica(ALLEEG, 'icatype', 'runica');
-    
-    %% Save the set file with ICA decomposition included
-    if false % prevent accidental overwrites
-        pop_saveset(...
-            ALLEEG...
-            , 'filename', ['sub', num2str(subject), '_merged_ica'] ...
-            , 'filepath', './data/eog_peaks/merged_raws/blinker/' ...
-            , 'check', 'on')
-        %OUTEEG = ALLEEG;
-        % pop_eegplot(ALLEEG, 0)
-    end
-end
+    ALLEEG = pop_runica(ALLEEG, 'icatype', 'runica')
+    %OUTEEG = ALLEEG;
+    % pop_eegplot(ALLEEG, 0)
 
-%% Readback saved SET files
-for subject = 1:21
-    ALLEEG = pop_loadset(['sub', num2str(subject), '_merged_ica.set'] ...
-        , './data/eog_peaks/merged_raws/blinker/')
-    
     %% Now relaunch GUI to run ICLabel
     %eeglab redraw
     ALLEEG = pop_iclabel(ALLEEG, 'default');
     [pClass, eyeICidxs] = sortrows(...
         ALLEEG.etc.ic_classification.ICLabel.classifications,...
         3, 'descend');
-    topEyeICidxs = eyeICidxs(1:3); %pClass(:, 3)>0.9) % >90% eye class
-    pClass(1:3, 3);
-    
-    %%
-    pIdx = 1
-    for icIdx = topEyeICidxs'
-        fh = pop_prop_extended(ALLEEG ...
-            , 0 ...
-            , icIdx ...
-            , NaN ...
-            , {} ...
-            , {});
-        saveas(fh ...
-            , ['./data/eog_peaks/merged_raws/blinker/' ...
-            , 'sub', num2str(subject)...
-            , '_ic', num2str(icIdx)...
-            , '_pEye', num2str(round(100*pClass(pIdx, 3)))] ...
-            , 'png')
-        pIdx = pIdx + 1;
-    end
-end
-
-%% Manually identify blink ICs from the top 3 ICLabel Eye ICs
-manualTopBlinkIC = zeros(1, 21);
-manualTopBlinkIC(1) = 2; % blinks
-manualTopBlinkIC(2) = 7; % maybe subject doesn't blink much
-manualTopBlinkIC(3) = 1; % blinks + saccades?
-manualTopBlinkIC(4) = 1; % good
-manualTopBlinkIC(5) = 2; % good
-manualTopBlinkIC(6) = -1; % good
-manualTopBlinkIC(7) = 2; % good, blinks a lot
-manualTopBlinkIC(8) = 2; % longer blinks
-manualTopBlinkIC(9) = -1; 
-manualTopBlinkIC(10) = 2;
-manualTopBlinkIC(11) = -1; 
-manualTopBlinkIC(12) = -1; % saccades?
-manualTopBlinkIC(13) = 1;
-manualTopBlinkIC(14) = 2;
-manualTopBlinkIC(15) = 2;
-manualTopBlinkIC(16) = -2;
-manualTopBlinkIC(17) = 1; % blinks a lot
-manualTopBlinkIC(18) = 2;
-manualTopBlinkIC(19) = 3; % saccades?
-manualTopBlinkIC(20) = 1;
-manualTopBlinkIC(21) = 1;
-
-%% Now run blinker on manually selected IC only
-for subject = 1:21 
-    ALLEEG = pop_loadset(['sub', num2str(subject), '_merged_ica.set'] ...
-        , './data/eog_peaks/merged_raws/blinker/ica_sets/');
+    topEyeICidxs = eyeICidxs(pClass(:, 3)>0.9) % >90% eye class
 
     %% Swap in ICA components for regular EEG channels
     icdata = eeg_getdatact(ALLEEG, 'component', [1:size(ALLEEG.icaweights,1)]);
-    topEyeICidxs = manualTopBlinkIC(subject);
-    if topEyeICidxs > 0
-        eyeICdata = icdata(topEyeICidxs, :);
-    else % flip the sign
-        eyeICdata = -icdata(topEyeICidxs, :);
-    end
-
-    % Now import this IC as a regular channel
+    eyeICdata = icdata(topEyeICidxs, :);
     EEG_EYE_ICs = pop_importdata('setname', 'musicImagery' ...
             , 'data', eyeICdata ...
             , 'subject', subject ...
-            , 'condition', 'merged' ...
+            , 'condition', condition ...
             , 'session', 1 ...
             , 'nbchan', length(topEyeICidxs) ...
             , 'chanlocs', [] ...
             , 'srate', eeg.fs ...
             );
-
+    
     %% Run blinker (doesn't take epoched data, expects continuous input)
     params = checkBlinkerDefaults(struct(), getBlinkerDefaults(EEG_EYE_ICs));
-    params.lowCutoffHz = 1; % increased from default 1Hz, improved blink detection in 10 subjects
-    params.highCutoffHz = 10;
-
-    if any(subject == [2, 7])
-        EEG_EYE_ICs = ALLEEG; % blink finding seems to fail, but IC does show blinks.
-        % revert to blink finding with scalp channels
-        %params.goodRatioThreshold = 0.1;
-        %params.minGoodBlinks = 1;
-        %params.stdThreshold = 1;
-        %params.lowCutoffHz = 4;
-    else % limit signalNumbers to the one manually labelled blink IC
-        params.signalNumbers = 1;
-    end
     
     params.subjectID = num2str(subject);
     params.uniqueName = 'allTrials';
@@ -238,6 +168,7 @@ for subject = 1:21
     %params.startTime
     
     params.signalTypeIndicator = 'UseNumbers';
+    params.signalNumbers = 1:length(topEyeICidxs);
     %params.signalTypeIndicator = 'UseICs';
     %params.signalNumbers = [3, 8];
     
@@ -256,17 +187,14 @@ for subject = 1:21
         '/blinkDump/']; %, 'Sub', num2str(subject)];
     params.keepSignals = false;
     
-    try
-        [OUTEEG, com, blinks, blinkFits, blinkProperties, ...
-                             blinkStatistics, params] = pop_blinker(...
-                             EEG_EYE_ICs ...
-                             , params);
-    end 
-
-
+    [OUTEEG, com, blinks, blinkFits, blinkProperties, ...
+                         blinkStatistics, params] = pop_blinker(...
+                         EEG_EYE_ICs ...
+                         , params);
+    
     %% Print some stats
-    blinks;
-    blinkStatistics;
+    blinks
+    blinkStatistics
     
     %%
 %     figure()
