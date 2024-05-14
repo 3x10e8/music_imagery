@@ -29,7 +29,7 @@ stimNames{3} = 'chor-101';
 stimNames{4} = 'chor-019';
 
 %% Load One Subject's Data
-for subject = 1:21
+for subject = 3 %1:21
     % subject = 1; % works well
 
     data_path = ['./data/musicImagery/dataCND/dataSub', num2str(subject), '.mat'];
@@ -117,14 +117,30 @@ for subject = 1:21
     
     end
     
-    %% Run ICA
-    ALLEEG = pop_runica(ALLEEG, 'icatype', 'runica');
-    
-    %% Save the set file with ICA decomposition included
-    if false % prevent accidental overwrites
+    %% Save the set file before running AMICA
+    if true % prevent accidental overwrites
         pop_saveset(...
             ALLEEG...
-            , 'filename', ['sub', num2str(subject), '_merged_ica'] ...
+            , 'filename', ['sub', num2str(subject), '_merged_preica'] ...
+            , 'filepath', './data/eog_peaks/merged_raws/blinker/' ...
+            , 'check', 'on')
+        %OUTEEG = ALLEEG;
+        % pop_eegplot(ALLEEG, 0)
+    end
+
+    %% Load this set again to run AMICA
+    ALLEEG = pop_loadset(['sub', num2str(subject), '_merged_preica.set'] ...
+        , './data/eog_peaks/merged_raws/blinker/');
+
+    %% Run ICA
+    %ALLEEG = pop_runica(ALLEEG, 'icatype', 'runica');
+    ALLEEG = pop_runamica(ALLEEG);
+
+    %% Save the set file with ICA decomposition included
+    if true % prevent accidental overwrites
+        pop_saveset(...
+            ALLEEG...
+            , 'filename', ['sub', num2str(subject), '_merged_amica'] ...
             , 'filepath', './data/eog_peaks/merged_raws/blinker/' ...
             , 'check', 'on')
         %OUTEEG = ALLEEG;
@@ -133,11 +149,12 @@ for subject = 1:21
 end
 
 %% Readback saved SET files
-for subject = 1:21
-    ALLEEG = pop_loadset(['sub', num2str(subject), '_merged_ica.set'] ...
+for subject = 3 %:21
+    ALLEEG = pop_loadset(['sub', num2str(subject), '_merged_amica.set'] ...
         , './data/eog_peaks/merged_raws/blinker/')
     
     %% Now relaunch GUI to run ICLabel
+    % updating makes it now ask for >100Hz sampling rate
     %eeglab redraw
     ALLEEG = pop_iclabel(ALLEEG, 'default');
     [pClass, eyeICidxs] = sortrows(...
@@ -167,6 +184,7 @@ end
 
 %% Manually identify blink ICs from the top 3 ICLabel Eye ICs
 manualTopBlinkIC = zeros(1, 21);
+%manualTopBlinkIC(1) = 1; % blinks with amica
 manualTopBlinkIC(1) = 2; % blinks
 manualTopBlinkIC(2) = 7; % maybe subject doesn't blink much
 manualTopBlinkIC(3) = 1; % blinks + saccades?
@@ -190,7 +208,7 @@ manualTopBlinkIC(20) = 1;
 manualTopBlinkIC(21) = 1;
 
 %% Now run blinker on manually selected IC only
-for subject = 1:21 
+for subject = 1 %:21 
     ALLEEG = pop_loadset(['sub', num2str(subject), '_merged_ica.set'] ...
         , './data/eog_peaks/merged_raws/blinker/ica_sets/');
 
@@ -217,7 +235,13 @@ for subject = 1:21
     %% Run blinker (doesn't take epoched data, expects continuous input)
     params = checkBlinkerDefaults(struct(), getBlinkerDefaults(EEG_EYE_ICs));
     params.lowCutoffHz = 1; % increased from default 1Hz, improved blink detection in 10 subjects
-    params.highCutoffHz = 10;
+    params.highCutoffHz = 20;
+    params.blinkAmpRange = [3, 50]; %[3, 50];
+    params.stdThreshold = 0.2;
+    params.pAVRThreshold = 3; %3; 
+    params.correlationThresholdTop = 0.98; % "best" blinks
+    params.correlationThresholdMiddle = 0.95;
+    params.correlationThresholdMiddle = 0.9; % still "good"
 
     if any(subject == [2, 7])
         EEG_EYE_ICs = ALLEEG; % blink finding seems to fail, but IC does show blinks.
