@@ -2,6 +2,9 @@
 cd /Users/3x10e8/Documents/GitHub/music_imagery.nosync
 addpath ../eeglab
 addpath ../eeglab/plugins/Blinker1.2.0/utilities/+pr/private/
+
+addpath ../eeglab/plugins/ICLabel1.6/matconvnet/
+
 % eyecatch mat files were missing, had to be downloaded from 
 % https://github.com/bigdelys/eye-catch/tree/master/private
 
@@ -9,7 +12,7 @@ addpath ../eeglab/plugins/Blinker1.2.0/utilities/+pr/private/
 % https://github.com/VisLab/EEG-Blinks/tree/master/blinker/utilities/%2Bpr/private
 
 % Launch eeglab
-% eeglab
+eeglab
 
 %% Load Stim mat file from dataset
 stim_path = './data/musicImagery/dataCND/dataStim.mat';
@@ -118,7 +121,7 @@ for subject = 3 %1:21
     end
     
     %% Save the set file before running AMICA
-    if true % prevent accidental overwrites
+    if false % prevent accidental overwrites
         pop_saveset(...
             ALLEEG...
             , 'filename', ['sub', num2str(subject), '_merged_preica'] ...
@@ -129,15 +132,17 @@ for subject = 3 %1:21
     end
 
     %% Load this set again to run AMICA
-    ALLEEG = pop_loadset(['sub', num2str(subject), '_merged_preica.set'] ...
-        , './data/eog_peaks/merged_raws/blinker/');
+    if false
+        ALLEEG = pop_loadset(['sub', num2str(subject), '_merged_preica.set'] ...
+            , './data/eog_peaks/merged_raws/blinker/');
+    end
 
     %% Run ICA
-    %ALLEEG = pop_runica(ALLEEG, 'icatype', 'runica');
-    ALLEEG = pop_runamica(ALLEEG);
+    ALLEEG = pop_runica(ALLEEG, 'icatype', 'runica');
+    %ALLEEG = pop_runamica(ALLEEG);
 
     %% Save the set file with ICA decomposition included
-    if true % prevent accidental overwrites
+    if false % prevent accidental overwrites
         pop_saveset(...
             ALLEEG...
             , 'filename', ['sub', num2str(subject), '_merged_amica'] ...
@@ -150,9 +155,14 @@ end
 
 %% Readback saved SET files
 for subject = 3 %:21
-    ALLEEG = pop_loadset(['sub', num2str(subject), '_merged_amica.set'] ...
-        , './data/eog_peaks/merged_raws/blinker/')
+    %ALLEEG = pop_loadset(['sub', num2str(subject), '_merged_amica.set'] ...
+    %    , './data/eog_peaks/merged_raws/blinker/')
+
+    ALLEEG = pop_loadset(['sub', num2str(subject), '_merged_ica.set'] ...
+        , './data/eog_peaks/merged_raws/blinker/ica_sets/')
     
+    eeglab redraw
+
     %% Now relaunch GUI to run ICLabel
     % updating makes it now ask for >100Hz sampling rate
     %eeglab redraw
@@ -186,7 +196,9 @@ end
 manualTopBlinkIC = zeros(1, 21);
 %manualTopBlinkIC(1) = 1; % blinks with amica
 manualTopBlinkIC(1) = 2; % blinks
-manualTopBlinkIC(2) = 7; % maybe subject doesn't blink much
+%manualTopBlinkIC(2) = 7; % maybe subject doesn't blink much
+manualTopBlinkIC(2) = 1; % maybe subject doesn't blink much
+
 manualTopBlinkIC(3) = 1; % blinks + saccades?
 manualTopBlinkIC(4) = 1; % good
 manualTopBlinkIC(5) = 2; % good
@@ -208,7 +220,7 @@ manualTopBlinkIC(20) = 1;
 manualTopBlinkIC(21) = 1;
 
 %% Now run blinker on manually selected IC only
-for subject = 1 %:21 
+for subject = 3 %:21 
     ALLEEG = pop_loadset(['sub', num2str(subject), '_merged_ica.set'] ...
         , './data/eog_peaks/merged_raws/blinker/ica_sets/');
 
@@ -229,21 +241,22 @@ for subject = 1 %:21
             , 'session', 1 ...
             , 'nbchan', length(topEyeICidxs) ...
             , 'chanlocs', [] ...
-            , 'srate', eeg.fs ...
+            , 'srate', ALLEEG.srate ...
             );
 
     %% Run blinker (doesn't take epoched data, expects continuous input)
     params = checkBlinkerDefaults(struct(), getBlinkerDefaults(EEG_EYE_ICs));
     params.lowCutoffHz = 1; % increased from default 1Hz, improved blink detection in 10 subjects
-    params.highCutoffHz = 20;
+    params.highCutoffHz = 20; %20;
     params.blinkAmpRange = [3, 50]; %[3, 50];
-    params.stdThreshold = 0.2;
+    params.stdThreshold = 1.5; %0.2;
     params.pAVRThreshold = 3; %3; 
     params.correlationThresholdTop = 0.98; % "best" blinks
     params.correlationThresholdMiddle = 0.95;
-    params.correlationThresholdMiddle = 0.9; % still "good"
+    params.correlationThresholdBottom = 0.9; % still "good"
+    params.minGoodBlinks = 1;
 
-    if any(subject == [2, 7])
+    if any(subject == [7]) %[2, 7])
         EEG_EYE_ICs = ALLEEG; % blink finding seems to fail, but IC does show blinks.
         % revert to blink finding with scalp channels
         %params.goodRatioThreshold = 0.1;
@@ -287,6 +300,18 @@ for subject = 1 %:21
                              , params);
     end 
 
+
+    %% Find some blinks to sanity check
+    t_start_s = 1900;
+    maxFrame = [blinkFits.maxFrame];
+    maxFrame_s = maxFrame/64;
+    search_mask = (t_start_s < maxFrame_s);
+    maxFrame_s(search_mask);
+
+    signal = blinks.signalData.signal;
+    figure()
+    plot(t_start_s:1/64:length(signal)/64, signal(t_start_s*64:end)); hold on
+    plot(maxFrame(maxFrame >= t_start_s*64)/64, signal(maxFrame(search_mask)), 'x')
 
     %% Print some stats
     blinks;
